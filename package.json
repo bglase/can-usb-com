@@ -1,0 +1,19 @@
+{
+  "name": "can-usb-com",
+  "version": "1.0.0",
+  "description": "NodeJS interface to CAN-USB-COM Adapter",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha --recursive test"
+  },
+  "author": "bglase@icloud.com",
+  "license": "MIT",
+  "dependencies": {
+    "serialport": "^6.2.0"
+  },
+  "devDependencies": {
+    "chai": "^4.1.2",
+    "mocha": "^4.0.1",
+    "sinon": "^4.1.2"
+  }
+}
