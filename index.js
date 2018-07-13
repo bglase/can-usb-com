@@ -28,8 +28,8 @@ const DEFAULT_OPTIONS = {
 
 
 module.exports = class CanUsbCom extends EventEmitter {
-	
-	constructor( options ) {
+  
+  constructor( options ) {
 
     super();
 
@@ -39,7 +39,7 @@ module.exports = class CanUsbCom extends EventEmitter {
 
     this.port = null;
 
-    this.isOpen = false;
+    this.isReady = false;
   }
 
   // sets (or re-sets) the configuration options.
@@ -97,7 +97,7 @@ module.exports = class CanUsbCom extends EventEmitter {
           
           .then( function() {
             // success!
-            me.isOpen = true;
+            me.isReady = true;
             resolve();
           })
           .catch( function(err) {
@@ -124,13 +124,14 @@ module.exports = class CanUsbCom extends EventEmitter {
         // owner calls 'close'
         me.emit( 'close', err );
 
-        me.isOpen = false;
+        me.isReady = false;
         me.port = null;
       });
 
     });
 
   }
+
 
   // Sets up a to-do list to send configuration commands to the board
   configure() {
@@ -164,16 +165,17 @@ module.exports = class CanUsbCom extends EventEmitter {
 
         me.options.filters.forEach( function( filter ) {
 
-          let type = filter.ext? 'ext':'std';
+          let type = filter.ext? ' ext':' std';
           
           filterList = filterList + type + ' ' + filter.id; 
           // filterList.push( me._sendAndWait( 
           //   'SET CAN FILTER ' + type + ' ' + filter.id + ' ' + filter.mask  + CR, 
           //   '<A:EOL=(.*?)>' ));
         });
+        //console.log('filters: ', filterList );
 
         return me._sendAndWait( 
-            'SET CAN FILTER ' + filterList + CR, 
+            'SET CAN FILTER' + filterList + CR, 
             '<A:(.*?)>' );
       }
 
@@ -202,16 +204,16 @@ module.exports = class CanUsbCom extends EventEmitter {
   close() {
     this.flushRequestQueue();
     if( this.port ) {
-      if( this.port.isOpen ) {
+      if( this.port.isReady ) {
         this.port.close();
       }
       this.port = null;
-      this.isOpen = false;
+      this.isReady = false;
     }
   }
 
   isOpen() {
-    return this.port && this.port.isOpen && this.isOpen;
+    return this.port && this.port.isOpen && this.isReady;
   }
 
 
@@ -345,7 +347,7 @@ module.exports = class CanUsbCom extends EventEmitter {
         me.rxData = '';
       }
     }
-    else if( me.isOpen ) {
+    else if( me.isReady ) {
  
       let packets = me._rxData.split( ';');
 
@@ -358,11 +360,27 @@ module.exports = class CanUsbCom extends EventEmitter {
           let fields = packet.match(/:([SX])([0-9A-F]{1,8})N([0-9A-F]{2,16})/);
 
           if( fields ){
+
+            // let id = parseInt(fields[2], 16);
+            // let pgn = (id >> 8) & 0xFF00;
+            // let priority = (id >> 26) & 0x07;
+
+            
+
+            // me.emit(pgn, {
+            //   priority: priority,
+            //   id: id,
+            //   ext: (fields[1] === 'X'),
+            //   data: Buffer.from( fields[3], 'hex')
+            // });
+
             me.emit('rx', {
               id: parseInt(fields[2], 16),
               ext: (fields[1] === 'X'),
               data: Buffer.from( fields[3], 'hex')
             });
+
+
           }
         });
       }
