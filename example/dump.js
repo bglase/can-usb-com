@@ -5,7 +5,13 @@
 
 const Can = require('..');
 
-let board = new Can();
+let board = new Can({
+    // Serial port baud rate
+  baudRate: 480800,
+
+  canRate: 250000,
+
+});
 
 // Event handler
 board.on('open', function() {

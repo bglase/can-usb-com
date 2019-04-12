@@ -269,9 +269,16 @@ module.exports = class CanUsbCom extends EventEmitter {
 
     let me = this;
 
-    //console.log( 'SEND: :X' + id.toString(16) + 'N' + Buffer.from( data ).toString('hex'));
-    me.port.write( ':X' + id.toString(16) + 'N' + Buffer.from( data ).toString('hex') + ';');
-
+    try{
+      me.port.write( ':X' + id.toString(16) + 'N' + Buffer.from( data ).toString('hex') + ';');
+    }
+    catch( err ) {
+      //console.log('sendExt error: ',data.toString(), err );
+      //
+      // what to do here...
+      throw err;
+      
+    }
   }
 
   // Send a message with 11-bit ID
@@ -373,13 +380,22 @@ module.exports = class CanUsbCom extends EventEmitter {
             //   ext: (fields[1] === 'X'),
             //   data: Buffer.from( fields[3], 'hex')
             // });
-
+            try{
+              //console.log('rx:', fields[3]);  
             me.emit('rx', {
               id: parseInt(fields[2], 16),
               ext: (fields[1] === 'X'),
               data: Buffer.from( fields[3], 'hex')
             });
+            }
+            catch( err ) {
+              // we sometimes get malformed packets (like an odd number of hex digits for the data)
+              // I dunno why that is, so ignore them
+               //console.log( packet );
+    
 
+                //console.log('onData error: ',fields, err );
+            }
 
           }
         });
