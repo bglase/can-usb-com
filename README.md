@@ -12,7 +12,7 @@ npm install can-usb-com
 
 The usb device appears as a serial port; depending on your platform you may or may not need to install drivers.  If a serial port does not appear when you plug in the board, refer to the [board installation documents](https://gridconnect.box.com/shared/static/bt1lpbzdhx2fws11z1tvsoi2xnhbvgv3.pdf) and/or download drivers from https://gridconnect.com/usb-can-interface.html and correct the problem.
 
-Create a script to use the board (change the COM port number as required):
+Simple script to use the board (change the COM port number as required):
 
 ```js
 const Can = require('can-usb-com');
@@ -39,6 +39,9 @@ board.open( 'COM3' )
     process.exit(0); 
   }, 5000 );
 
+  // send an extended (29-bit ID) message with some data
+  board.sendExt( 0x10EF8001, [0x49, 0x2B, 0x06, 0x00, 0x02]);
+
 })
 .catch( function( err ) {
   // If anything goes wrong, report the error and exit
@@ -49,6 +52,59 @@ board.open( 'COM3' )
 
 ```
 
+Simple script to use the board in J1939 mode (change the COM port number as required):
+
+```js
+const Can = require('can-usb-com');
+
+// Use default settings (do not filter messages)
+let board = new Can({
+  
+  // including the J1939 object enables J1939 mode
+  j1939: {
+    // the address we use to identify ourselves
+    address: 0x80,
+  }
+});
+
+// Handle each incoming PGN
+board.on('data', function( msg ) {
+  console.log( 'Pgn: ', msg );
+});
+
+// If you care about non-J1939 messages (eg 11-bit IDs) you can
+// also listen for the rx event
+board.on('rx', function( msg ) {
+  console.log( 'Msg: ', msg.id.toString(16), msg.data );
+});
+
+// Open the com port and configure...
+board.open( 'COM3' )
+
+.then( function() {
+
+  console.log('Listening....');
+
+  // listen for 5 seconds, then end the script
+  setTimeout( function() {
+    board.close();
+    process.exit(0); 
+  }, 5000 );
+
+  board.write({
+    pgn: 61184,
+    dst: 128,
+    buf: Buffer.from( [ 0x47, 0xF0 ]
+  });
+})
+.catch( function( err ) {
+  // If anything goes wrong, report the error and exit
+  console.error( err );
+  board.close();
+  process.exit(-1);
+});
+
+```
 Several complete examples can be found in the `example` folder.
 
 ## Configuration
@@ -61,6 +117,9 @@ you can omit it from the options object and the default will be used).
 ```js
 let board = new Can({
 
+  // Serial port baud rate
+  baudRate: 115200,
+
   // bit rate on the CAN bus
   canRate: 250000,
 
@@ -69,7 +128,13 @@ let board = new Can({
 
   // filters for incoming packets
   filters: [
-  ]
+  ],
+
+  // including the J1939 object enables J1939 mode
+  j1939: {
+    // the address we use to identify ourselves
+    address: 0x80,
+  }
   });
 ```
 ### Filters
@@ -91,6 +156,8 @@ A filter has these fields:
 The board object emits the following events:
 * `open` when the serial port is successfully opened
 * `error` if an error occurs (like the serial port could not be opened)
+* `rx` when an incoming CAN message arrives
+* `pgn` when an incoming PGN arrives and J1939 mode is enabled
 
 To listen for the events, use the typical NodeJS EventEmitter pattern:
 ```js
@@ -98,7 +165,11 @@ To listen for the events, use the typical NodeJS EventEmitter pattern:
     console.log( 'Port opened');
   })
 
-  board.on('msg', function(msg){
+  board.on('pgn', function(pgn){
+    console.log( pgn );
+  })
+
+  board.on('rx', function(msg){
     console.log( msg );
   })
 
@@ -111,7 +182,7 @@ To listen for the events, use the typical NodeJS EventEmitter pattern:
     }
   })
 
-  board.on('error', function(msg){
+  board.on('error', function(err){
     console.log( 'Serial Port error: ', err );
   })
 
@@ -128,4 +199,4 @@ To listen for the events, use the typical NodeJS EventEmitter pattern:
 Please note the following if you wish to update or modify this package:
 
 * JSHINT rules are included, please lint any changes.
-* Unit tests are included (run them using `npm test`).  Some unit tests require an actual board to be attached and will fail if it is not found. 
+ 
