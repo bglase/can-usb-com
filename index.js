@@ -408,7 +408,7 @@ module.exports = class CanUsbCom extends EventEmitter {
       // add to our list of transactions
       this.transactions.push( transaction );
 
-      if( to === J1939_ADDR_GLOBAL ) {
+      if( msg.dst === J1939_ADDR_GLOBAL ) {
         transaction.state = J1939TP_STATE_SEND_BAM;
         this.sendBamOrRts( transaction, J1939TP_CTRL_BYTE_BAM );
         transaction.timer = setTimeout( this.updateTxBam.bind(this, transaction ), this.bamInterval );
