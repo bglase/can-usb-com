@@ -404,10 +404,10 @@ module.exports = class CanUsbCom extends EventEmitter {
       transaction.ctsRcvd = 0;
       transaction.buf = msg.buf;
       transaction.cb = msg.cb;
-      
+   
       // add to our list of transactions
       this.transactions.push( transaction );
-
+      
       if( msg.dst === J1939_ADDR_GLOBAL ) {
         transaction.state = J1939TP_STATE_SEND_BAM;
         this.sendBamOrRts( transaction, J1939TP_CTRL_BYTE_BAM );
@@ -635,18 +635,17 @@ module.exports = class CanUsbCom extends EventEmitter {
   processCm( msg ) {
     // /* all cm messages have the pgn in the same location */
     var pgn = msg.buf[5] | msg.buf[6]<<8 | msg.buf[7]<<16;
-
     /* msg_size is in RTS, ACK, and BAM so make sure it's only used there */
     var msgSize = msg.buf[1] | msg.buf[2] << 8;
-
-    // see if we know about the associated transaction
-    let transaction = this.findTxTransaction( msg.src, msg.dst,  pgn );
 
     switch( msg.buf[0] ) {
 
       case J1939TP_CTRL_BYTE_CTS: {
+       
+        // see if we know about the associated transaction
+        let transaction = this.findTxTransaction( msg.src, msg.dst,  pgn, [J1939TP_STATE_WAIT_CTS, J1939TP_STATE_WAIT_ACK] );
 
- 
+  
         if( transaction ) {
 
           /* if we never get a CTS, then an abort shouldn't be sent.  if we did
@@ -669,8 +668,6 @@ module.exports = class CanUsbCom extends EventEmitter {
               transaction.state = J1939TP_STATE_SEND_DATA;
               transaction.ctsCnt = msg.buf[1];
               transaction.numCur = msg.buf[2];
-
-              //console.log ('CTS cstCnt: ' + transaction.ctsCnt + ' numCur: ', transaction.numCur );
              
               // send the next data block
               for( var i = 0; i < transaction.numPackets; i++ ) {
@@ -693,14 +690,13 @@ module.exports = class CanUsbCom extends EventEmitter {
 
       case J1939TP_CTRL_BYTE_ACK: {
 
+        // see if we know about the associated transaction
+        let transaction = this.findTxTransaction( msg.src, msg.dst,  pgn, [J1939TP_STATE_WAIT_ACK] );
+
         if( transaction ) {
 
-          if( transaction.state === J1939TP_STATE_WAIT_ACK ) {
-
-            if( transaction.cb ) {
-              transaction.cb( (transaction.msgSize === msgSize)? null: new Error('Incomplete') );
-            }
-
+          if( transaction.cb ) {
+            transaction.cb( (transaction.msgSize === msgSize)? null: new Error('Incomplete') );
           }
 
           this.completeTpTransaction( transaction );
@@ -710,6 +706,9 @@ module.exports = class CanUsbCom extends EventEmitter {
       }
 
       case J1939TP_CTRL_BYTE_ABORT: {
+
+        // see if we know about the associated transaction
+        let transaction = this.findTxTransaction( msg.src, msg.dst,  pgn, [J1939TP_STATE_WAIT_ACK, J1939TP_STATE_WAIT_CTS, J1939TP_STATE_WAIT_DATA] );
 
         if( transaction ) {
 
@@ -799,7 +798,6 @@ module.exports = class CanUsbCom extends EventEmitter {
 
     ]);
 
-    //console.log( 'Sending RTS ', this.buildId( J1939_PGN_TP_CM, transaction.dst ).toString( 16 ), buf );
     this.sendExt( this.buildId( J1939_PGN_TP_CM, transaction.dst  ), buf );
 
   }
@@ -808,7 +806,6 @@ module.exports = class CanUsbCom extends EventEmitter {
 
     let snt = (transaction.numCur-1)*7;
     let rem = transaction.msgSize - snt;
-
     var data = [ transaction.numCur ];
 
     // insert the data, or pad with 255
@@ -830,10 +827,10 @@ module.exports = class CanUsbCom extends EventEmitter {
    * @param      pgn     The pgn
    * @return     Object if found, null otherwise
    */
-  findTxTransaction( dst, src, pgn ) {
+  findTxTransaction( dst, src, pgn, states ) {
 
     let index = this.transactions.findIndex( function( item ){
-      return item.dst === dst && item.src === src && item.pgn === pgn;
+      return item.dst === dst && item.src === src && item.pgn === pgn && states.indexOf(item.state) > -1;
     });
 
     return( index > -1 ) ? this.transactions[ index ] : null;
@@ -858,8 +855,8 @@ module.exports = class CanUsbCom extends EventEmitter {
         clearTimeout( transaction.timer );
 
       }
+      delete this.transactions.splice( index, 1 );
 
-      delete this.transactions.splice( index );
     }
 
   }
