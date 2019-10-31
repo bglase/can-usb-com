@@ -157,7 +157,7 @@ The board object emits the following events:
 * `open` when the serial port is successfully opened
 * `error` if an error occurs (like the serial port could not be opened)
 * `rx` when an incoming CAN message arrives
-* `pgn` when an incoming PGN arrives and J1939 mode is enabled
+* `data` when an incoming PGN arrives and J1939 mode is enabled
 
 To listen for the events, use the typical NodeJS EventEmitter pattern:
 ```js
@@ -165,7 +165,7 @@ To listen for the events, use the typical NodeJS EventEmitter pattern:
     console.log( 'Port opened');
   })
 
-  board.on('pgn', function(pgn){
+  board.on('data', function(pgn){
     console.log( pgn );
   })
 

@@ -8,12 +8,11 @@ const Can = require('..');
 
 let board = new Can({
   canRate: 500000,
-  filters: [{
-    ext: true,
-    id: '10EF0000 10EFFFFF',
-  }
-
-  ]
+//  filters: [{
+//    ext: true,
+//    id: '10EF0000 10EFFFFF',
+//  }
+//  ]
 });
 
 //let board = new Can();
@@ -48,8 +47,10 @@ board.list()
   //  board.sendExt( 0x10EF8201, [0x49, 0x2B, 0x09, 0x00, 0x0B]);
 
   //for( let i = 0; i<5; i++) {
-    board.sendExt( 0x10EF8001, [0x49, 0x2B, 0x06, 0x00, 0x02]);
-    board.sendExt( 0x10EF8001, [0x49, 0x2B, 0x05, 0x00, 0x85, 0x85]);
+    board.sendExt( 0x10EF80FE, [0x49, 0x2B, 0x06, 0x00, 0x02]);
+
+ //   board.sendExt( 0x10FF1081, [0x49, 0x2B, 0x06, 0x00, 0x02]);
+  //  board.sendExt( 0x10EF8001, [0x49, 0x2B, 0x05, 0x00, 0x85, 0x85]);
 
 
 })
