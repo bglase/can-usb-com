@@ -112,7 +112,18 @@ function abortReason( code ) {
  * @class      J1939Transaction (name)
  */
 class J1939Transaction {
-  constructor() {
+  constructor( msg, src ) {
+
+      this.dst = msg.dst;
+      this.src = src;
+      this.pgn = msg.pgn;
+      this.msgSize = msg.buf.length;
+      this.numPackets = Math.floor((msg.buf.length+6)/7);
+      this.numCur = 1;
+      this.ctsCnt = 0;
+      this.ctsRcvd = 0;
+      this.buf = msg.buf;
+      this.cb = msg.cb;
   }
 }
 
@@ -144,7 +155,22 @@ module.exports = class CanUsbCom extends EventEmitter {
     // the fact that this.address exists, tells us we are in J1930 mode
     if( options.j1939 ) {
       
-      this.address = options.j1939.address;
+      // address claim states
+      this.CLAIM_NONE = 0;
+      this.CLAIM_IN_PROGRESS = 1;
+      this.CLAIM_SUCCESSFUL = 2;
+      this.CLAIM_FAILED = 3;
+      this.CLAIM_LISTEN_ONLY = 4;
+  
+      // one or the other of these needs to be defined
+      this.preferredAddress = options.j1939.preferredAddress;
+      this.addressRange = options.j1939.addressRange;
+      this.address = 0; // until claim procedure is done
+
+      this.name = options.j1939.name || [0,0,0,0,0,0,0,0];
+
+      this.addressClaimStatus = this.CLAIM_NONE;
+      this.attemptedSourceAddress = 0;
 
       // default interval to 50ms (J1939 standard)
       this.bamInterval = options.j1939.bamInterval || 50;
@@ -194,9 +220,14 @@ module.exports = class CanUsbCom extends EventEmitter {
           reject( err );
         }
         else {
-          
+         
           me.configure()
-          
+          .then( function() {
+            if( me.preferredAddress || me.addressRange ) {
+              return me.setAddress();
+            }
+            // otherwise just continue
+          })          
           .then( function() {
             // success!
             me.isReady = true;
@@ -370,6 +401,89 @@ module.exports = class CanUsbCom extends EventEmitter {
 
   }
 
+  reportAddressClaimStatus() {
+    
+    this.emit( 'address', this.addressClaimStatus, this.attemptedSourceAddress );
+  
+  }
+
+  // returns a promise that resolves when the address claim process is complete
+  // @todo use address range to implement a search if preferred address
+  // is not available
+  setAddress( name, preferredAddress, addressRange ) {
+
+    let me = this;
+
+    // unless specified, use stored values
+    me.name = name || me.name;
+    me.preferredAddress = preferredAddress || me.preferredAddress;
+    me.addressRange = addressRange || me.addressRange;
+
+    // for now we only support a single preferred address, no addressrange
+    if( me.preferredAddress ) {
+
+      return new Promise( function( resolve, reject ){
+
+        me.attemptedSourceAddress = me.preferredAddress;
+        me.addressClaimStatus = me.CLAIM_IN_PROGRESS;
+        me.reportAddressClaimStatus();
+
+        // send Request for Address Claimed
+        me.sendExt( 0x10EA0000 + ( me.attemptedSourceAddress <<8 ) + 0xFE, me.name );
+
+        let timer;
+
+        let listener = function( msg ) {
+          
+          let pf = (msg.id >> 16) & 0xFF;   // protocol format field
+          let ps = (msg.id >> 8 ) & 0xFF;   // protocol specific field
+          let sa = (msg.id ) & 0xFF;        // source address
+
+          if( pf === 0xEE && ps === 0xFF && sa === me.address ) {
+            // someone else using our message - report error and kick out
+            // @todo try one from the addressRange
+            me.close();
+            clearTimeout( timer );
+
+            me.addressClaimStatus = me.CLAIM_FAILED;
+            me.reportAddressClaimStatus( );
+
+            reject(new Error( 'CAN Address already in use'));
+
+          }
+        };
+
+        me.on('rx', listener );
+
+        // wait at least 250ms, if no response then we can use address
+        timer = setTimeout( function() {
+
+          // we hit the timeout, address is ours!
+          me.removeListener('rx', listener );
+
+          me.address = me.preferredAddress;
+
+          //console.log('can-usb-com:No CAN address conflict; claiming ' + me.preferredAddress );
+
+          // send address claim to announce ourselves
+          me.sendExt( 0x10EEFF00 + (me.preferredAddress), me.name );
+
+          me.addressClaimStatus = me.CLAIM_SUCCESSFUL;
+          me.reportAddressClaimStatus( );
+
+          resolve();
+        }, 500 );
+      });
+    }
+    else {
+      me.addressClaimStatus = me.CLAIM_FAILED;
+      me.reportAddressClaimStatus( );
+      return Promise.reject( new Error('Unable to claim address') );
+    }
+
+  }
+
+
   // Send a J1939 PGN.  If >8 bytes, it is sent using transport protocol
   /**
    * Send a J1939 PGN
@@ -383,7 +497,9 @@ module.exports = class CanUsbCom extends EventEmitter {
    * @param {function} msg.cb, optional function(err) to call on completion
    */
   write( msg ) {
-
+    
+    //console.log( 'can-usb-com::write', msg );
+    
     let pri = msg.priority || 0x07;
 
     if( msg.buf.length <= 8 ) {
@@ -392,19 +508,8 @@ module.exports = class CanUsbCom extends EventEmitter {
     else if( this.address ) {
       
       // use transport protocol if J1939 enabled
-      let transaction = new J1939Transaction();
-
-      transaction.dst = msg.dst;
-      transaction.src = this.address;
-      transaction.pgn = msg.pgn;
-      transaction.msgSize = msg.buf.length;
-      transaction.numPackets = Math.floor((msg.buf.length+6)/7);
-      transaction.numCur = 1;
-      transaction.ctsCnt = 0;
-      transaction.ctsRcvd = 0;
-      transaction.buf = msg.buf;
-      transaction.cb = msg.cb;
-   
+      let transaction = new J1939Transaction( msg, this.address );
+  
       // add to our list of transactions
       this.transactions.push( transaction );
       
@@ -518,9 +623,6 @@ module.exports = class CanUsbCom extends EventEmitter {
         // case J1939_PGN_REQUEST:
         //   break;
 
-        case J1939_PGN_ADDRESS_CLAIMED :
-          break;
-
         case J1939_PGN_TP_CM:
            me.processCm( msg );
            break;
@@ -528,6 +630,7 @@ module.exports = class CanUsbCom extends EventEmitter {
         case J1939_PGN_TP_DT:
           break;
 
+        case J1939_PGN_ADDRESS_CLAIMED:
         default:
           // let upper level application handle it
           me.emit( 'data', msg );
@@ -608,7 +711,7 @@ module.exports = class CanUsbCom extends EventEmitter {
                 me.handleJ1939( id, data );
               }
               else {
- 
+
                 // emit a standard (non-J1939) message
                 me.emit('rx', {
                   id: id,
