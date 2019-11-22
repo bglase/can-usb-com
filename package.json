@@ -9,7 +9,7 @@
   "author": "bglase@icloud.com",
   "license": "MIT",
   "dependencies": {
-    "serialport": "^6.2.0"
+    "serialport": "^7.1.5"
   },
   "devDependencies": {
     "chai": "^4.1.2",
