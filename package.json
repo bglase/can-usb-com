@@ -1,6 +1,6 @@
 {
   "name": "can-usb-com",
-  "version": "1.3.0",
+  "version": "2.0.0",
   "description": "NodeJS interface to CAN-USB-COM Adapter",
   "main": "index.js",
   "scripts": {
