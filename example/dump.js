@@ -44,11 +44,14 @@ board.list()
 
     // Event handler for each incoming message
     board.on('rx', function( msg ){
-      console.log( 'Msg: ', msg.id.toString(16), msg.data );
+     // if( msg.id===0x581 ) {
+        console.log( 'Msg: ', msg.id.toString(16), msg.data );
+    //  }
     });
 
+    console.log( 'Opening ', ports[0].path );
     // Open the COM port and initialize the USBCAN device...
-    return board.open( ports[0].comName );
+    return board.open( ports[0].path );
   }
   else {
     console.error( 'No CAN-USB-COM Devices found');

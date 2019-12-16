@@ -415,7 +415,7 @@ board.list()
   });
 
   // Open the COM port and initialize the USBCAN device...
-  return board.open( ports[0].comName );
+  return board.open( ports[0].path );
   
 })
 .then( function() {

@@ -21,14 +21,14 @@ board.list()
   // got a list of the ports, try to open the last one which is likely
   // the USB cable
   ports = ports.slice(-1);
-  console.log( 'Opening ', ports[0].comName );
+  console.log( 'Opening ', ports[0].path );
 
   board.on('rx', function( msg ){
     console.log( 'Msg: ', msg.id.toString(16), msg.data );
   });
 
 
-  return board.open( ports[0].comName );
+  return board.open( ports[0].path );
 
 })
 .then( function() {
