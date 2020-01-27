@@ -183,19 +183,16 @@ module.exports = class CanUsbCom extends EventEmitter {
   // Returns a promise that resolves to a list of available serial ports
   list() {
 
-    return new Promise( function( resolve, reject ){
-      SerialPort.list( function( err, ports ) {
-        if( err ) {
-          reject( err );
-        }
-        else {
-          resolve( ports.filter( function(port) {
-            // the CAN-USB-COM returns a particular device ID
-            return port.vendorId === '0403' && port.productId === '6001';
-          }));
-        }
+    return SerialPort.list()
+    .then( function ( ports ) {
+        
+      return( ports.filter( function(port) {
+        // the CAN-USB-COM returns a particular device ID
+        return port.vendorId === '0403' && port.productId === '6001';
+      }));
+        
       });
-    });
+   
   }
 
 
@@ -337,13 +334,13 @@ module.exports = class CanUsbCom extends EventEmitter {
   // Close the serial port and clean up
   close() {
     this.flushRequestQueue();
-    if( this.port ) {
-      if( this.port.isReady ) {
-        this.port.close();
-      }
-      this.port = null;
-      this.isReady = false;
-    }
+    if( this.isOpen() ) {
+     
+      this.port.close();
+    }     
+    this.port = null;
+    this.isReady = false;
+
   }
 
   // Required function for cs-modbus GenericConnection
