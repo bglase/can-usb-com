@@ -163,7 +163,7 @@ module.exports = class CanUsbCom extends EventEmitter {
       this.CLAIM_LISTEN_ONLY = 4;
   
       // one or the other of these needs to be defined
-      this.preferredAddress = options.j1939.preferredAddress;
+      this.preferredAddress = options.j1939.preferredAddress || options.j1939.address || 0xFE;
       this.addressRange = options.j1939.addressRange;
       this.address = 0; // until claim procedure is done
 
