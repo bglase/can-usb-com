@@ -77,6 +77,8 @@ const J1939TP_TIMEOUT_T2      =  (1250);
 const J1939TP_TIMEOUT_T3      =  (1250);
 const J1939TP_TIMEOUT_T4      =  (1050);
 
+// max size of incoming message
+const J1939CFG_TP_RX_BUF_SIZE = 1792;
 
 /**
  * Convert an abort code to a string
@@ -112,8 +114,11 @@ function abortReason( code ) {
  * @class      J1939Transaction (name)
  */
 class J1939Transaction {
-  constructor( msg, src ) {
+  constructor( msg, src, type ) {
 
+      this.type = type;
+
+      if( type === 'tx') {
       this.dst = msg.dst;
       this.src = src;
       this.pgn = msg.pgn;
@@ -124,6 +129,25 @@ class J1939Transaction {
       this.ctsRcvd = 0;
       this.buf = msg.buf;
       this.cb = msg.cb;
+      this.timer = null;
+      this.state = null;
+    }
+    else {
+      this.state = null;
+
+      this.pgn = msg.buf[5]*65536 + msg.buf[6]*256 + msg.buf[7];
+      this.msgSize = msg.buf[1] | msg.buf[2] << 8;
+      this.nextSeq = 1;
+      this.numPackets = msg.buf[ 3 ];
+      this.ctsMax = msg.buf[4];
+      this.ctsCnt = 0;
+      this.dst = src;
+      this.src = msg.src;
+      this.pri = msg.pri;
+      this.buf = Buffer.alloc( this.msgSize );
+
+      //console.log( 'NewRx: ', this.msgSize, this.numPackets, this.ctsMax );
+    }
   }
 }
 
@@ -505,7 +529,7 @@ module.exports = class CanUsbCom extends EventEmitter {
     else if( this.address ) {
       
       // use transport protocol if J1939 enabled
-      let transaction = new J1939Transaction( msg, this.address );
+      let transaction = new J1939Transaction( msg, this.address, 'tx' );
   
       // add to our list of transactions
       this.transactions.push( transaction );
@@ -621,10 +645,11 @@ module.exports = class CanUsbCom extends EventEmitter {
         //   break;
 
         case J1939_PGN_TP_CM:
-           me.processCm( msg );
-           break;
+          me.processCm( msg );
+          break;
 
         case J1939_PGN_TP_DT:
+          me.processDt( msg );
           break;
 
         case J1939_PGN_ADDRESS_CLAIMED:
@@ -740,6 +765,50 @@ module.exports = class CanUsbCom extends EventEmitter {
 
     switch( msg.buf[0] ) {
 
+      // start receiving a multi-packet broadcast message
+      case J1939TP_CTRL_BYTE_BAM:
+
+        // valid BAM must have a global dst 
+        if( msg.dst === J1939_ADDR_GLOBAL )
+        {
+            // first check to make sure we're not receiving a BAM from this addr.
+            //   if we are, then discard the old BAM.
+            this.cleanRxTransaction( J1939_ADDR_GLOBAL, msg.src );
+
+        }
+        break;
+
+      // start receiving a multi-packet message addressed to us
+      case J1939TP_CTRL_BYTE_RTS:
+
+        // valid RTS must NOT have a global dst 
+        if( msg.dst !== J1939_ADDR_GLOBAL )
+        {
+          // first check to make sure we're not receiving a rts/cts from
+          //   this addr.  if we are, then discard the old msg.
+          this.cleanRxTransaction( msg.dst, msg.src );
+
+          // use transport protocol if J1939 enabled
+          let transaction = new J1939Transaction( msg, this.address, 'rx' );
+          transaction.state = J1939TP_STATE_WAIT_DATA;
+
+          // add to our list of transactions
+          this.transactions.push( transaction );
+
+          /*  does it have a correct size? */
+          if(  msgSize <= msg.buf[ 3 ] * 7 )
+          {
+            transaction.ctsCnt = 0;
+            this.sendCts( transaction );
+            transaction.timer = setTimeout( this.onTpTimeout.bind(this, transaction ), J1939TP_TIMEOUT_T3 );
+          }
+          else {
+            this.sendAbort( transaction.src, transaction );
+            this.completeTpTransaction( transaction );
+          }
+        }
+        break;
+
       case J1939TP_CTRL_BYTE_CTS: {
        
         // see if we know about the associated transaction
@@ -807,6 +876,7 @@ module.exports = class CanUsbCom extends EventEmitter {
 
       case J1939TP_CTRL_BYTE_ABORT: {
 
+        //console.log( 'RX_ABORT', abortReason( msg.buf[1] ));
         // see if we know about the associated transaction
         let transaction = this.findTxTransaction( msg.src, msg.dst,  pgn, [J1939TP_STATE_WAIT_ACK, J1939TP_STATE_WAIT_CTS, J1939TP_STATE_WAIT_DATA] );
 
@@ -829,6 +899,157 @@ module.exports = class CanUsbCom extends EventEmitter {
 
     return;
   }
+
+  rxBam( transaction, msg ) {
+
+
+    /* how many bytes have been received and are remaining? */
+    let rcv = (transaction.nextSeq - 1 ) * 7;
+    let rem = transaction.msgSize - rcv;
+
+    /* the entire CAN frame might not be data, so we need to know
+       how many bytes are suppose to be left */
+    let min = 7;
+    if( rem < 7 )
+        min = rem;
+
+    switch( transaction.state )
+    {
+        case J1939TP_STATE_WAIT_DATA:
+        {
+          if( transaction.nextSeq === msg.buf[0] && (rcv+min) <= J1939CFG_TP_RX_BUF_SIZE && (rcv + rem) === transaction.msgSize ) {
+
+            if( transaction.timer ) {
+              clearTimeout( transaction.timer );
+            }
+           
+            msg.buf.copy (transaction.buf, rcv, 1, 1+min );
+
+            if( transation.nextSeq++ === transaction.numPackets ) {
+
+              this.emit('data', {
+                pri: transaction.pri,
+                src: transaction.src,
+                dst: transaction.dst,
+                pgn: transaction.pgn,
+                buf: transaction.buf,
+              });
+
+              this.completeTpTransaction( transaction );
+            }
+        }
+        break;
+
+            // /* check to make sure that the sequence number and rx count
+            //    are correct and that an overflow won't occur */
+            // if( ( j1939tp_rxbuf[ index ].next_seq == msg->buf[ 0 ] ) &&
+            //     ( ( b_rcv + min ) <= J1939CFG_TP_RX_BUF_SIZE ) &&
+            //     ( ( b_rcv + b_rem ) == j1939tp_rxbuf[ index ].msg_size ) )
+            // {
+
+            //     j1939tp_rxbuf[ index ].timer = 0;
+            //     for( cnt = 0; cnt < min; cnt++ )
+            //         j1939tp_rxbuf[ index ].buf[ b_rcv + cnt ] = msg->buf[ 1 + cnt ];
+
+            //     /* was that the last packet? */
+            //     if( j1939tp_rxbuf[ index ].next_seq++ == j1939tp_rxbuf[ index ].num_packets )
+            //     {
+
+            //         n_msg.pgn = j1939tp_rxbuf[ index ].pgn;
+            //         n_msg.buf = j1939tp_rxbuf[ index ].buf;
+            //         n_msg.buf_len = j1939tp_rxbuf[ index ].msg_size;
+            //         n_msg.dst = j1939tp_rxbuf[ index ].dst;
+            //         n_msg.src = j1939tp_rxbuf[ index ].src;
+            //         J1939_AppProcess( &n_msg );
+            //         j1939tp_rxbuf[ index ].state = J1939TP_STATE_UNUSED;
+            //     }
+            // }
+            // else
+            // {
+
+            //     /* sequence was wrong, so we discard the entire message */
+            //     j1939tp_rxbuf[ index ].state = J1939TP_STATE_UNUSED;
+            // }
+            // break;
+        }
+
+        default:
+            this.completeTpTransaction( transaction );
+            break;
+    }
+
+    return;
+  }
+
+  rxRtsCts( transaction, msg ) {
+    /* how many bytes have been received and are remaining? */
+    let rcv = (transaction.nextSeq - 1 ) * 7;
+    let rem = transaction.msgSize - rcv;
+
+    /* the entire CAN frame might not be data, so we need to know
+       how many bytes are suppose to be left */
+    let min = 7;
+    if( rem < 7 )
+        min = rem;
+
+    if( transaction.state === J1939TP_STATE_WAIT_DATA ) {
+ 
+      //console.log( 'DT: ',  msg.buf[0], 'of', transaction.numPackets );
+      if( transaction.nextSeq === msg.buf[0] && (rcv+min) <= J1939CFG_TP_RX_BUF_SIZE && (rcv + rem) === transaction.msgSize ) {
+
+        if( transaction.timer ) 
+          clearTimeout( transaction.timer );
+        }
+        transaction.timer = setTimeout( this.onTpTimeout.bind( this, transaction ), J1939TP_TIMEOUT_T1 );
+
+        msg.buf.copy (transaction.buf, rcv, 1, 1+min );
+
+        if( transaction.nextSeq++ >= transaction.numPackets ) {
+     
+          // that was the last packet - receive the message and clean up
+          this.emit('data', {
+            pri: transaction.pri,
+            src: transaction.src,
+            dst: transaction.dst,
+            pgn: transaction.pgn,
+            buf: transaction.buf,
+          });
+
+          this.sendAck( transaction );
+          this.completeTpTransaction( transaction );
+        }
+        else {
+          // not the last packet, if we need to send a CTS, do it
+          if( ++transaction.ctsCnt >= transaction.ctsMax  ) {
+            this.sendCts( transaction );
+          }
+        }
+       }
+       else {
+          transaction.rsn = J1939TP_RSN_RSRCS_FREED;
+        
+          this.sendAbort( transaction.src, transaction );
+          this.completeTpTransaction( transaction );
+
+       }
+
+  }
+
+  processDt( msg ) {
+
+
+    let transaction = this.findRxTransaction( msg.dst, msg.src, [J1939TP_STATE_WAIT_DATA ]);
+
+    if( transaction ) {
+      if( msg.dst === J1939_ADDR_GLOBAL ) {
+        this.rxBam( transaction, msg );
+      }
+      else {
+        this.rxRtsCts( transaction, msg );
+      }
+    } 
+  }
+
 
   /**
    * Updates the state of a TX BAM message and sends out the next packet
@@ -859,7 +1080,7 @@ module.exports = class CanUsbCom extends EventEmitter {
    *
    * @param      transaction     The transaction to abort
    */
-  sendAbort( transaction ) {
+  sendAbort( dst, transaction ) {
 
     var buf = Buffer.from( [
       J1939TP_CTRL_BYTE_ABORT,
@@ -872,7 +1093,28 @@ module.exports = class CanUsbCom extends EventEmitter {
       (transaction.pgn >> 16) & 0xFF
     ]);
 
-    this.sendExt( this.buildId( J1939_PGN_TP_CM, transaction.dst ), buf );
+    this.sendExt( this.buildId( J1939_PGN_TP_CM, dst ), buf );
+  }
+
+  /**
+   * Send a J1939 Connection management: ack message
+   *
+   * @param      transaction     The transaction to abort
+   */
+  sendAck( transaction ) {
+
+    var buf = Buffer.from( [
+      J1939TP_CTRL_BYTE_ACK,
+      transaction.msgSize & 0xFF,
+      (transaction.msgSize >> 8 ) & 0xFF,
+      transaction.numPackets,
+      0xFF,  
+      transaction.pgn & 0xFF,
+      (transaction.pgn >> 8 ) & 0xFF,
+      (transaction.pgn >> 16) & 0xFF
+    ]);
+
+    this.sendExt( this.buildId( J1939_PGN_TP_CM, transaction.src ), buf );
   }
 
 
@@ -920,6 +1162,28 @@ module.exports = class CanUsbCom extends EventEmitter {
   }
 
   /**
+   * Sends a CTS transport protocol frame
+   *
+   * @param      {<type>}  transaction  The transaction
+   */
+  sendCts( transaction ) {
+
+   var buf = Buffer.from( [
+      J1939TP_CTRL_BYTE_CTS,
+      transaction.ctsMax,
+      transaction.nextSeq,
+      0xFF,
+      0xFF,
+      transaction.pgn & 0xFF,
+      (transaction.pgn >> 8 ) & 0xFF,
+      (transaction.pgn >> 16) & 0xFF
+    ]);
+
+    this.sendExt( this.buildId( J1939_PGN_TP_CM, transaction.src  ), buf );
+
+  }
+
+  /**
    * Looks up a transmit J1939 transaction
    *
    * @param      dst     The destination
@@ -930,10 +1194,40 @@ module.exports = class CanUsbCom extends EventEmitter {
   findTxTransaction( dst, src, pgn, states ) {
 
     let index = this.transactions.findIndex( function( item ){
-      return item.dst === dst && item.src === src && item.pgn === pgn && states.indexOf(item.state) > -1;
+      return item.type === 'tx' && item.dst === dst && item.src === src && item.pgn === pgn && states.indexOf(item.state) > -1;
     });
 
     return( index > -1 ) ? this.transactions[ index ] : null;
+  }
+
+ /**
+   * Looks up a receive J1939 transaction
+   *
+   * @param      dst     The destination
+   * @param      src     The source
+   * @param      pgn     The pgn
+   * @return     Object if found, null otherwise
+   */
+  findRxTransaction( dst, src, states ) {
+
+    let index = this.transactions.findIndex( function( item ){
+      return item.type === 'rx' && item.dst === dst && item.src === src && states.indexOf(item.state) > -1;
+    });
+
+    return( index > -1 ) ? this.transactions[ index ] : null;
+  }
+
+  /**
+   * If there is a matching RX transactioon, kills it
+   */
+  cleanRxTransaction( dst, src )
+  {
+    let transaction = this.findRxTransaction( dst, src, [J1939TP_STATE_SEND_ABORT, J1939TP_STATE_WAIT_DATA ,J1939TP_STATE_WAIT_ACK ]);
+
+    if( transaction ) {
+      this.completeTpTransaction( transaction );
+    }
+
   }
 
 
@@ -967,10 +1261,20 @@ module.exports = class CanUsbCom extends EventEmitter {
    */
   onTpTimeout( transaction ) {
 
-    if( transaction.state !== J1939TP_STATE_SEND_RTS ) {
-      transaction.rsn = J1939TP_RSN_TIMEOUT;
-      transaction.state = J1939TP_STATE_SEND_ABORT;
-      this.sendAbort( transaction );
+    if( transaction.type === 'tx') {
+      if( transaction.state !== J1939TP_STATE_SEND_RTS ) {
+        transaction.rsn = J1939TP_RSN_TIMEOUT;
+        transaction.state = J1939TP_STATE_SEND_ABORT;
+        this.sendAbort( transaction.dst, transaction );
+      }
+    }
+    else {
+      if( J1939TP_STATE_WAIT_DATA === transaction.state ) {
+
+        transaction.rsn = J1939TP_RSN_TIMEOUT;
+        transaction.state = J1939TP_STATE_SEND_ABORT;
+        this.sendAbort( transaction.src, transaction );
+      }
     }
 
     if( transaction.cb ) {
