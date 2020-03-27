@@ -9,6 +9,6 @@
   "author": "bglase@icloud.com",
   "license": "MIT",
   "dependencies": {
-    "serialport": "^8.0.5"
+    "serialport": "^8.0.7"
   }
 }
