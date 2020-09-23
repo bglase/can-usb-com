@@ -834,24 +834,28 @@ module.exports = class CanUsbCom extends EventEmitter {
                 clearTimeout( transaction.timer );
               }
 
-              transaction.state = J1939TP_STATE_SEND_DATA;
+              //transaction.state = J1939TP_STATE_SEND_DATA;
               transaction.ctsCnt = msg.buf[1];
               transaction.numCur = msg.buf[2];
-             
+             console.log('before send', transaction );
+              let packetsToSend = Math.min( transaction.ctsCnt, transaction.numPackets - transaction.numCur);
+
               // send the next data block
-              for( var i = 0; i < transaction.numPackets; i++ ) {
+              for( var i = 0; i < packetsToSend; i++ ) {
                 this.sendDt( transaction );
                 transaction.numCur++;
-                
+                transaction.ctsCnt--;
               }
 
-              if( transaction.numCur++ >= transaction.numPackets ) {
+console.log('after send', transaction );
+              if( transaction.numCur >= transaction.numPackets ) {
                 transaction.timer = setTimeout( this.onTpTimeout.bind( this, transaction ), J1939TP_TIMEOUT_T3 );
                 transaction.state = J1939TP_STATE_WAIT_ACK;
-              } else if( --transaction.ctsCnt === 0 ) {
+              } else if( transaction.ctsCnt === 0 ) {
                 transaction.timer = setTimeout( this.onTpTimeout.bind( this, transaction ), J1939TP_TIMEOUT_TR );
                 transaction.state = J1939TP_STATE_WAIT_CTS;
               }
+              console.log('after state', transaction );
             }
           }
         }

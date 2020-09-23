@@ -1,19 +1,26 @@
 // Example script that opens the CAN connection and
-// sends a message.  
+// sends a message.
 // The example also sets up a filter to catch a response message
-// (obviously you will not get a ) 
+// (obviously you will not get a )
 
+const TARGET_ID = 0x80;
+const MY_ID = 0x01;
+
+const NEW_ID = 0xC9;
+
+const SENDID = 0x10EF0000 + (TARGET_ID << 8) + MY_ID;
+const RXID = 0x10EF0000 + (MY_ID << 8) + TARGET_ID;
 
 const Can = require('..');
 
 let board = new Can({
-  canRate: 500000,
-  // filters: [{
-  //   ext: true,
-  //   id: '10EF0000 10EFFFFF',
-  // }
+  canRate: 250000,
+  filters: [{
+    ext: true,
+    id: '10EF0000 10EFFFFF',
+  }
 
-  // ]
+  ]
 });
 
 //let board = new Can();
@@ -25,35 +32,50 @@ board.list()
   // got a list of the ports, try to open the last one which is likely
   // the USB cable
   ports = ports.slice(-1);
-board.on('write', function( msg ){
-  console.log( 'Write: ', msg );
-});
 
   // Event handler for each incoming message
   board.on('rx', function( msg ){
-    if( ( msg.id & 0x00FF0000 )!== 0x00FF0000 )
-    {
 
-    }
+  //  if( msg.id === RXID ) {
     console.log( 'Msg: ', msg.id.toString(16), msg.data );
+ // }
     //board.sendExt( 0x10EFC901, [0x48, 0xA0, 0x19, 0, 0, 0, 0, 0]);
   });
 
   // Open the COM port and initialize the USBCAN device...
   console.log( 'opening ', ports[0].path);
   return board.open( ports[0].path );
-  
+
 })
 .then( function() {
 
+ board.sendExt( SENDID, [0x49, 0x43, 0x01, 0x00, 0, 0]);
+ board.sendExt( SENDID, [0x49, 0x43, 0x02, 0x00, 0, 0]);
+ board.sendExt( SENDID, [0x49, 0x43, 0x05, 0x00, 0, 0]);
+ board.sendExt( SENDID, [0x49, 0x43, 0x06, 0x00, 0, 0]);
+ board.sendExt( SENDID, [0x49, 0x43, 0x07, 0x00, 0, 0]);
+ board.sendExt( SENDID, [0x49, 0x43, 0x09, 0x00, 0, 0]);
+ board.sendExt( SENDID, [0x49, 0x43, 0x14, 0x00, 0, 0]);
+ board.sendExt( SENDID, [0x49, 0x43, 0x18, 0x00, 0x01, 0x04]);
+
+ //CAN address
+ board.sendExt( SENDID, [0x49, 0x2B, 0x05, 0x00, NEW_ID, NEW_ID]);
+
+ // can rate
+ board.sendExt( SENDID, [0x49, 0x2B, 0x06, 0x00, 0x02]);
+
+ // digital control options
+ //board.sendExt( SENDID, [0x49, 0x2B, 0x09, 0x00, 0x50, 0x01]);
+
   // set joystick options
  // board.sendExt( 0x10EF8201, [0x49, 0x2B, 0x09, 0x00, 0x0B, 0]);
-  
+
   // read joystick options
  // board.sendExt( 0x10EF8201, [0x49, 0x43, 0x09, 0x00, 0, 0]);
    // board.sendExt( 0x10FF39EA, [0x49, 0x2B, 0x06, 0x00, 0x02]);
 
-  //  board.sendExt( 0x10EF8201, [0x49, 0x2B, 0x09, 0x00, 0x0B]);
+   // status message enable
+    board.sendExt( SENDID, [0x49, 0x2B, 0x14, 0x00, 0xFF]);
 
   //for( let i = 0; i<5; i++) {
   //  board.sendExt( 0x10EF8001, [0x49, 0x2B, 0x06, 0x00, 0x02]);
@@ -65,15 +87,12 @@ board.on('write', function( msg ){
 //  board.sendExt( 0x10EF8001, [0x49, 0x2B, 0x05, 0x00, 0x82, 0x82]);
 
   // CAN address
-  // board.sendExt( 0x10EFC901, [0x49, 0x2B, 0x05, 0x00, 0xC9, 0xC9]);
-
-// REad mem 
-board.sendExt( 0x10EF8001, [0x45, 0x00, 0x00, 0x04, 0x00, 0x00]);
-
-
+ // board.sendExt( 0x10EFC901, [0x49, 0x2B, 0x05, 0x00, 0xC9, 0xC9]);
 
   // can rate
-  // board.sendExt( 0x10EFC901, [0x49, 0x2B, 0x06, 0x00, 0x02]);
+  //board.sendExt( 0x10EFC901, [0x49, 0x2B, 0x06, 0x00, 0x02]);
+
+//  board.sendExt( 0x10EFC901, [0x49, 0x2B, 0x06, 0x00, 0x02]);
 
 //  board.sendExt( 0x10EF8001, [0x47, 0xFB ]);
 
@@ -94,7 +113,7 @@ board.sendExt( 0x10EF8001, [0x45, 0x00, 0x00, 0x04, 0x00, 0x00]);
 
 })
 .catch( function( err ) {
-  // Something went wrong... 
+  // Something went wrong...
   console.error( err );
   board.close();
   process.exit(-1);

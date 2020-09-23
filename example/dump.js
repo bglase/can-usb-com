@@ -6,7 +6,7 @@
 const Can = require('..');
 
 let board = new Can({
-    // Serial port baud rate
+  // Serial port baud rate
   baudRate: 480800,
 
   canRate: 500000,
@@ -56,10 +56,10 @@ board.list()
   else {
     console.error( 'No CAN-USB-COM Devices found');
   }
-  
+
 })
 .catch( function( err ) {
-  // Something went wrong... 
+  // Something went wrong...
   console.error( err );
   board.close();
   process.exit(-1);

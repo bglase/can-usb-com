@@ -15,7 +15,7 @@ let board = new Can({
   baudRate: 480800,
 
   j1939: {
-    address: 0xFE,
+    address: 0xee,
   },
 
   // filters: [{
@@ -27,6 +27,29 @@ let board = new Can({
 });
 
 
+  let buf = [0x47, 0x01 , 0x00, 0xFF, 0xFF];
+  
+
+  let fill = new Array(200).fill( 0x55 );
+
+  buf = buf.concat( fill );
+
+  let index = 0;
+
+
+  function complete( err ) {
+    if( err ) {
+      console.log( 'Err', err );
+    }
+    else {
+      console.log('complete');
+    }
+  }
+
+  function send( index ) {
+    //buf[0] = index;
+    board.write( {pgn: 0xEF00, dst: 0x81, buf: buf, cb: complete, priority: 4 } );
+  }
 
 
 // Look for compatible CAN adapters
@@ -40,12 +63,14 @@ board.list()
   // Event handler for each incoming message
   board.on('data', function( msg ){
     
-    console.log( msg );
+    //console.log( msg );
 
-    if( msg.id !== 0x10FF1081 ) {
-      console.log( 'PGN: ', msg.pgn.toString(16), msg.buf );
+    if( ( msg.pgn & 0xFF00 ) !== 0xFF00 ) {
+      console.log( 'PGN: ', msg.buf.length, msg.pgn.toString(16), msg.buf );
     }
 
+    index++;
+//    send( index );
   });
 
   // Open the COM port and initialize the USBCAN device...
@@ -54,32 +79,34 @@ board.list()
 })
 .then( function() {
 
-  let buf = [0x47, 0xf0 , 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+ //  let buf = [0x47, 0xf0 , 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
 
-  let index = 0;
+ //  let index = 0;
 
-  function send( index ) {
-    //buf[0] = index;
-    board.write( {pgn: 0xEF00, dst: 0x80, buf: buf, cb: complete, priority: 4 } );
-  }
+ //  function send( index ) {
+ //    //buf[0] = index;
+ //    board.write( {pgn: 0xEF00, dst: 0x80, buf: buf, cb: complete, priority: 4 } );
+ //  }
 
-  function complete( err ) {
-    index = (index + 1) & 0xFF;
+ //  function complete( err ) {
+ //    index = (index + 1) & 0xFF;
 
-    if( err ) {
-      console.log( err );
-      process.exit(1);
-    }
-    else
-    {
-      console.log( 'Complete!');
-      process.nextTick( send.bind(index) );
- //process.exit(0);
-    }
-  }
+ //    if( err ) {
+ //      console.log( err );
+ //      process.exit(1);
+ //    }
+ //    else
+ //    {
+ //      console.log( 'Complete!');
+ //      process.nextTick( send.bind(index) );
+ // //process.exit(0);
+ //    }
+ //  }
+
+ //  send(index);
+
 
   send(index);
-
 
 
   //board.sendPgn( 0xEF00, 0xFF, buf );
