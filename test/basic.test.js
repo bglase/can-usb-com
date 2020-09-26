@@ -12,7 +12,7 @@ chai.use(require('chai-events'));
 const { Duplex } = require('stream');
 
 const CAN_OPTIONS = {
-  canRate: 500000,
+  canRate: 250000,
 };
 
 // Define a simple stream to send packet(s)
@@ -272,7 +272,7 @@ describe('Loopback Mode', () => {
   })
 
 
-  it.only('should loop back a packet', (done) => {
+  it('should loop back a packet', (done) => {
 
     // because we opened the port in loopback mode, the same
     // message shoud come out

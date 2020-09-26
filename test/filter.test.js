@@ -9,13 +9,42 @@ const should = chai.should();
 chai.use(require('chai-events'));
 
 const CAN_OPTIONS = {
-  canRate: 500000,
+  canRate: 250000,
+  loopback: true,
 };
 
 
+const MSG1 = {
+  id: 0x1,
+  ext: false,
+  buf: Buffer.from([])
+};
 
+const MSG2 = {
+  id: 0x1,
+  ext: true,
+  buf: Buffer.from([])
+};
 
-describe.skip('No Filters', () => {
+const MSG3 = {
+  id: 0x7FF,
+  ext: false,
+  buf: Buffer.from([1, 2, 3])
+};
+
+const MSG4 = {
+  id: 0x1FFFFFFF,
+  ext: true,
+  buf: Buffer.from([3, 2, 1])
+};
+
+const MSG5 = {
+  id: 0x10EF8081,
+  ext: true,
+  buf: Buffer.from([5, 4, 3])
+};
+
+describe('No Filters', () => {
 
   let can = null;
 
@@ -23,7 +52,7 @@ describe.skip('No Filters', () => {
   before(async () => {
 
     // set and keep for later tests
-    can = new CanUsbCom(CAN_OPTIONS);
+    can = new CanUsbCom(Object.assign(CAN_OPTIONS, { filters: [] }));
 
     let result = await can.list();
 
@@ -34,68 +63,212 @@ describe.skip('No Filters', () => {
     return p;
   })
 
-  it('should send a message with standard identifier', async () => {
+  it('should receive MSG1', (done) => {
 
-    let p = can.should.not.emit('error');
+    can.once('data', (msg) => {
 
-    // mainly we are checking that the write does not throw or error
+      expect(msg).to.deep.eq(MSG1);
 
-    can.write({
-      id: 0x100,
-      ext: false,
-      buf: []
-    });
-    can.write({
-      id: 0x101,
-      ext: false,
-      buf: [1]
-    });
-    can.write({
-      id: 0x102,
-      ext: false,
-      buf: [1, 2]
-    });
-    can.write({
-      id: 0x103,
-      ext: false,
-      buf: [1, 2, 3]
-    });
-    can.write({
-      id: 0x104,
-      ext: false,
-      buf: [1, 2, 3, 4, 5]
-    });
-    can.write({
-      id: 0x105,
-      ext: false,
-      buf: [1, 2, 3, 4, 5, 6]
-    });
-    can.write({
-      id: 0x106,
-      ext: false,
-      buf: [1, 2, 3, 4, 5, 6, 7]
-    });
-    can.write({
-      id: 0x107,
-      ext: false,
-      buf: [1, 2, 3, 4, 5, 6, 7, 8]
+      done();
+
     });
 
-    return p;
-
+    can.write(MSG1);
   });
 
-  it('should emit a write event', async () => {
+  it('should receive MSG2', (done) => {
 
-    let p = can.should.emit('write');
+    can.once('data', (msg) => {
 
-    can.write({
-      id: 0x100,
-      ext: false,
-      buf: []
+      expect(msg).to.deep.eq(MSG2);
+
+      done();
+
     });
 
+    can.write(MSG2);
+  });
+
+  it('should receive MSG3', (done) => {
+
+    can.once('data', (msg) => {
+
+      expect(msg).to.deep.eq(MSG3);
+
+      done();
+
+    });
+
+    can.write(MSG3);
+  });
+
+  it('should receive MSG4', (done) => {
+
+    can.once('data', (msg) => {
+
+      expect(msg).to.deep.eq(MSG4);
+
+      done();
+
+    });
+
+    can.write(MSG4);
+  });
+
+  // after all tests in this block
+  after(async () => {
+
+    await can.close();
+
+  })
+});
+
+describe('Only Standard IDs', () => {
+
+  let can = null;
+
+  // before all tests in this block, get an open port
+  before(async () => {
+
+    // set and keep for later tests
+    can = new CanUsbCom(Object.assign(CAN_OPTIONS, {
+      filters: [{
+        ext: false,
+
+        id: '0 7FF'
+      }]
+    }));
+
+    let result = await can.list();
+
+    let p = can.should.emit('open');
+
+    can.open(result[0].path);
+
     return p;
+  })
+
+  it('should receive MSG1', (done) => {
+
+    can.once('data', (msg) => {
+
+      expect(msg).to.deep.eq(MSG1);
+
+      done();
+
+    });
+
+    can.write(MSG1);
+  });
+
+  it('should not receive MSG2', async () => {
+
+    let p = can.should.not.emit('data');
+
+    can.write(MSG2);
+
+    return p;
+  });
+
+  it('should receive MSG3', (done) => {
+
+    can.once('data', (msg) => {
+
+      expect(msg).to.deep.eq(MSG3);
+
+      done();
+
+    });
+
+    can.write(MSG3);
+  });
+
+  it('should not receive MSG4', async () => {
+
+    let p = can.should.not.emit('data');
+
+    can.write(MSG4);
+
+    return p;
+  });
+
+  // after all tests in this block
+  after(async () => {
+
+    await can.close();
+
+  })
+});
+
+
+describe('Only Extended IDs', () => {
+
+  let can = null;
+
+  // before all tests in this block, get an open port
+  before(async () => {
+
+    // set and keep for later tests
+    can = new CanUsbCom(Object.assign(CAN_OPTIONS, {
+      filters: [{
+        ext: true,
+
+        id: '0 1FFFFFFF'
+      }]
+    }));
+
+    let result = await can.list();
+
+    let p = can.should.emit('open');
+
+    can.open(result[0].path);
+
+    return p;
+  })
+
+  it('should not receive MSG1', async () => {
+
+    let p = can.should.not.emit('data');
+
+    can.write(MSG1);
+
+    return p;
+  });
+
+  it('should receive MSG2', (done) => {
+
+    can.once('data', (msg) => {
+
+      expect(msg).to.deep.eq(MSG2);
+
+      done();
+
+    });
+
+    can.write(MSG2);
+  });
+
+
+  it('should not receive MSG3', async () => {
+
+    let p = can.should.not.emit('data');
+
+    can.write(MSG3);
+
+    return p;
+  });
+
+  it('should receive MSG4', (done) => {
+
+    can.once('data', (msg) => {
+
+      expect(msg).to.deep.eq(MSG4);
+
+      done();
+
+    });
+
+    can.write(MSG4);
   });
 
 
@@ -107,8 +280,7 @@ describe.skip('No Filters', () => {
   })
 });
 
-
-describe('Receive a Message', () => {
+describe('Only a single ID', () => {
 
   let can = null;
 
@@ -116,7 +288,13 @@ describe('Receive a Message', () => {
   before(async () => {
 
     // set and keep for later tests
-    can = new CanUsbCom(CAN_OPTIONS);
+    can = new CanUsbCom(Object.assign(CAN_OPTIONS, {
+      filters: [{
+        ext: true,
+
+        id: MSG5.id.toString(16)
+      }]
+    }));
 
     let result = await can.list();
 
@@ -127,53 +305,56 @@ describe('Receive a Message', () => {
     return p;
   })
 
+  it('should not receive MSG1', async () => {
 
-  it('should receive an extended message', (done) => {
+    let p = can.should.not.emit('data');
+
+    can.write(MSG1);
+
+    return p;
+  });
+
+  it('should not receive MSG2', async () => {
+
+    let p = can.should.not.emit('data');
+
+    can.write(MSG2);
+
+    return p;
+  });
+
+
+  it('should not receive MSG3', async () => {
+
+    let p = can.should.not.emit('data');
+
+    can.write(MSG3);
+
+    return p;
+  });
+
+  it('should not receive MSG4', async () => {
+
+    let p = can.should.not.emit('data');
+
+    can.write(MSG4);
+
+    return p;
+  });
+
+  it('should receive MSG5', (done) => {
 
     can.once('data', (msg) => {
 
-      expect(msg).to.be.an('object');
-
-      expect(msg.id).to.exist;
-      expect(msg.ext).to.exist;
-      expect(msg.buf).to.exist;
-      expect(msg.id).to.be.eq(0x10EF8081);
-      expect(msg.ext).to.be.eq(true);
-      expect(msg.buf).to.deep.eq(Buffer.from([1, 2, 3, 4, 5, 6, 7, 8]));
+      expect(msg).to.deep.eq(MSG5);
 
       done();
 
     });
 
-    // here we simulate a receipt of a message thru the serial port
-    // we could also send a packet and loop it back
-    //
-    can._onData(Buffer.from(':X10EF8081N0102030405060708;'));
-
+    can.write(MSG5);
   });
 
-  it('should receive a standard message', (done) => {
-
-    can.once('data', (msg) => {
-
-      expect(msg).to.be.an('object');
-
-      expect(msg.id).to.exist;
-      expect(msg.ext).to.exist;
-      expect(msg.buf).to.exist;
-      expect(msg.id).to.be.eq(0x100);
-      expect(msg.ext).to.be.eq(false);
-      expect(msg.buf).to.deep.eq(Buffer.from([8, 7, 6, 5, 4, 3, 2, 1]));
-
-      done();
-
-    });
-
-    // here we simulate a receipt of a message thru the serial port
-    // we could also send a packet and loop it back
-    can._onData(Buffer.from(':S100N0807060504030201;'));
-
-  });
 
   // after all tests in this block
   after(async () => {
