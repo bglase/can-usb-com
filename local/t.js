@@ -31,6 +31,9 @@ board.on('close', function(err) {
   }
 });
 
+let throttle;
+
+
 // Look for compatible CAN adapters
 board.list()
   .then(function(ports) {
@@ -41,13 +44,20 @@ board.list()
       ports = ports.slice(-1);
 
       // Event handler for each incoming message
-      board.on('data', function(msg) {
+      board.on('rx', function(msg) {
+        if (msg.id === 0x10ef8280) {
+          //console.log(msg.data);
+          let val = msg.data[3] * 256 + msg.data[2];
+          let newthrottle = val >> 3;
+          //console.log(newthrottle);
+          if (newthrottle !== throttle) {
+            console.log('T: ' + newthrottle);
+            throttle = newthrottle;
+          }
 
-        console.log('Msg: ', msg.id.toString(16), msg.buf);
-
+          //      console.log( 'Msg: ', msg.id.toString(16), msg.data );
+        }
       });
-
-      console.log('Opening ', ports[0].path);
 
       // Open the COM port and initialize the USBCAN device...
       return board.open(ports[0].path);
