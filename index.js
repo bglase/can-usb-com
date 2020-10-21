@@ -98,7 +98,6 @@ module.exports = class CanUsbCom extends Duplex {
       me.port = new SerialPort(port, serialOptions, function(err) {
 
         if (err) {
-          me.emit('error', err);
           reject(err);
         } else {
 
