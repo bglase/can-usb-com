@@ -244,7 +244,18 @@ module.exports = class CanUsbCom extends Duplex {
 
             let type = filter.ext ? ' ext' : ' std';
 
-            filterList = filterList + type + ' ' + filter.id;
+            if (filter.id !== undefined) {
+              filterList = filterList + type + ' ' + filter.id;
+            } else if ((filter.mask !== undefined) &&
+                       (filter.code !== undefined)) {
+              // If filter is presented as a mask and code, perform simple
+              // conversion to the toID/fromID format expected by
+              // CAN-USB-COM. This is imperfect and will let many more
+              // messages through than intended. This is only meant to
+              // allow compatibility with CAN modules that require this
+              // style filter specification for very specific cases.
+              filterList = filterList + type + ' ' + filter.mask.toString(16) + ' ' + filter.code.toString(16);
+            }
             // filterList.push( me._sendAndWait(
             //   'SET CAN FILTER ' + type + ' ' + filter.id + ' ' + filter.mask  + CR,
             //   '<A:EOL=(.*?)>' ));
