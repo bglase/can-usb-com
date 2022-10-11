@@ -27,17 +27,7 @@ pipeline {
                 sh 'npm install && npm test'
             }
         }
-        stage('Test Node 18') {
-            agent {
-                docker {
-                    image 'node:18-slim'
-                }
-            }
-            steps {
-                sh 'rm -rf node_modules'
-                sh 'npm install && npm test'
-            }
-        }
+
     }
     post {
             // Clean after build
