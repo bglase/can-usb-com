@@ -4,7 +4,7 @@ pipeline {
         stage('Test Node 12') {
             agent {
                 docker {
-                    image 'node:12-alpine'
+                    image 'node:12-slim'
                 }
             }
             steps {
@@ -14,7 +14,7 @@ pipeline {
         stage('Test Node 14') {
             agent {
                 docker {
-                    image 'node:14-alpine'
+                    image 'node:14-slim'
                 }
             }
             steps {
@@ -24,7 +24,7 @@ pipeline {
         stage('Test Node 16') {
             agent {
                 docker {
-                    image 'node:16-alpine'
+                    image 'node:16-slim'
                 }
             }
             steps {
@@ -34,7 +34,7 @@ pipeline {
         stage('Test Node 18') {
             agent {
                 docker {
-                    image 'node:18-alpine'
+                    image 'node:18-slim'
                 }
             }
             steps {
@@ -42,4 +42,10 @@ pipeline {
             }
         }
     }
+    post {
+            // Clean after build
+            always {
+                cleanWs disableDeferredWipeout: true, deleteDirs: true
+            }
+        }
 }
