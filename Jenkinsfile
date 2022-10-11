@@ -1,16 +1,10 @@
 pipeline {
     agent any
+    environment {
+            HOME = '.'
+    }
     stages {
-        stage('Test Node 12') {
-            agent {
-                docker {
-                    image 'node:12-slim'
-                }
-            }
-            steps {
-                sh 'npm install && npm test'
-            }
-        }
+
         stage('Test Node 14') {
             agent {
                 docker {
@@ -18,6 +12,7 @@ pipeline {
                 }
             }
             steps {
+                sh 'rm -rf node_modules'
                 sh 'npm install && npm test'
             }
         }
@@ -28,6 +23,7 @@ pipeline {
                 }
             }
             steps {
+                sh 'rm -rf node_modules'
                 sh 'npm install && npm test'
             }
         }
@@ -38,6 +34,7 @@ pipeline {
                 }
             }
             steps {
+                sh 'rm -rf node_modules'
                 sh 'npm install && npm test'
             }
         }
