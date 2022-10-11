@@ -54,7 +54,7 @@ board.open( 'COM3' )
 ```
 
 ## Streaming
-The CAN-USB-COM extends the NodeJS stream interface, so it can be piped to other stream instances.  See `stream.js` in the example folder.
+The CAN-USB-COM extends the NodeJS stream interface, so it can be piped to other stream instances.  See `basic.test.js` in the test folder.
 
 ## Examples
 Several complete examples can be found in the `example` folder.

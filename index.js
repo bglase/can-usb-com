@@ -62,22 +62,25 @@ module.exports = class CanUsbCom extends Duplex {
     // save for later use
     this.options = Object.assign(DEFAULT_OPTIONS, options);
 
+    if(this.options.Binding) {
+      SerialPort.Binding = this.options.Binding;
+    }
   }
 
   // Returns a promise that resolves to a list of available serial ports
   list() {
 
     return SerialPort.list()
-      .then(function(ports) {
+    .then(function(ports) {
 
-        return (ports.filter(function(port) {
-          // the CAN-USB-COM returns a particular device ID
-          // so we filter for that before supplying the list to the
-          // caller
-          return port.vendorId === '0403' && port.productId === '6001';
-        }));
+      return (ports.filter(function(port) {
+        // the CAN-USB-COM returns a particular device ID
+        // so we filter for that before supplying the list to the
+        // caller
+        return port.vendorId === '0403' && port.productId === '6001';
+      }));
 
-      });
+    });
   }
 
 
@@ -93,26 +96,30 @@ module.exports = class CanUsbCom extends Duplex {
         baudRate: me.options.baudRate
       };
 
+      if(me.options.bindingOptions) {
+        serialOptions.bindingOptions = me.options.bindingOptions;
+      }
+
       // Do this last, since the caller will have their callback called
       // when the port is opened
       me.port = new SerialPort(port, serialOptions, function(err) {
 
-        if (err) {
+        if(err) {
           reject(err);
         } else {
 
           me._configure()
-            .then(function() {
-              // success!
-              me.isReady = true;
-              me.emit('open');
+          .then(function() {
+            // success!
+            me.isReady = true;
+            me.emit('open');
 
-              resolve();
-            })
-            .catch(function(err) {
-              // configure failed
-              reject(err);
-            });
+            resolve();
+          })
+          .catch(function(err) {
+            // configure failed
+            reject(err);
+          });
         }
 
       });
@@ -146,7 +153,7 @@ module.exports = class CanUsbCom extends Duplex {
   // Close the serial port and clean up
   close() {
     this._flushRequestQueue();
-    if (this.isOpen()) {
+    if(this.isOpen()) {
 
       this.port.close();
     }
@@ -178,7 +185,7 @@ module.exports = class CanUsbCom extends Duplex {
 
     let buf = (Array.isArray(msg.buf)) ? Buffer.from(msg.buf) : msg.buf;
 
-    if (buf.length <= 8) {
+    if(buf.length <= 8) {
 
       let prefix = (me.options.loopback) ? '|' : ':';
       prefix += (msg.ext === true) ? 'X' : 'S';
@@ -204,6 +211,10 @@ module.exports = class CanUsbCom extends Duplex {
 
   }
 
+  drain() {
+    return this.port.drain();
+  }
+
   // required functions for a readable stream, we don't need to do anything
   _read() {}
 
@@ -217,72 +228,72 @@ module.exports = class CanUsbCom extends Duplex {
 
     // Enter configuration mode
     return me._sendAndWait(':CONFIG;' + CR, '#0#')
-      .then(function() {
+    .then(function() {
 
-        // Set up CAN baud rate and sample point
+      // Set up CAN baud rate and sample point
+      return me._sendAndWait(
+        'set can port ' +
+        me.options.canRate +
+        ' ' + me.options.samplePoint + CR,
+        '<A:(.*?)>');
+    })
+
+    // Set up input and output format
+    .then(function() {
+      return me._sendAndWait(
+        'DEL CAN FILTER ALL' + CR,
+        '<A:All filters deleted>');
+    })
+
+    // Set up input and output format
+    .then(function() {
+
+      if(me.options.filters.length > 0) {
+        let filterList = '';
+
+        me.options.filters.forEach(function(filter) {
+
+          let type = filter.ext ? ' ext' : ' std';
+
+          if(filter.id !== undefined) {
+            filterList = filterList + type + ' ' + filter.id;
+          } else if((filter.mask !== undefined) &&
+            (filter.code !== undefined)) {
+            // If filter is presented as a mask and code, perform simple
+            // conversion to the toID/fromID format expected by
+            // CAN-USB-COM. This is imperfect and will let many more
+            // messages through than intended. This is only meant to
+            // allow compatibility with CAN modules that require this
+            // style filter specification for very specific cases.
+            filterList = filterList + type + ' ' + filter.mask.toString(16) + ' ' + filter.code.toString(16);
+          }
+          // filterList.push( me._sendAndWait(
+          //   'SET CAN FILTER ' + type + ' ' + filter.id + ' ' + filter.mask  + CR,
+          //   '<A:EOL=(.*?)>' ));
+        });
+
         return me._sendAndWait(
-          'set can port ' +
-          me.options.canRate +
-          ' ' + me.options.samplePoint + CR,
+          'SET CAN FILTER' + filterList + CR,
           '<A:(.*?)>');
-      })
+      }
 
-      // Set up input and output format
-      .then(function() {
-        return me._sendAndWait(
-          'DEL CAN FILTER ALL' + CR,
-          '<A:All filters deleted>');
-      })
+    })
 
-      // Set up input and output format
-      .then(function() {
+    // Set up input and output format
+    .then(function() {
+      let filter = (me.options.filters.length > 0) ? 'ON' : 'OFF';
 
-        if (me.options.filters.length > 0) {
-          let filterList = '';
+      return me._sendAndWait(
+        'SET CAN CM FILTER=' + filter + ' EOL=NONE IFMT=ASCII OFMT=ASCII MODE=NORMAL' + CR,
+        '<A:EOL=(.*?)>');
+    })
 
-          me.options.filters.forEach(function(filter) {
-
-            let type = filter.ext ? ' ext' : ' std';
-
-            if (filter.id !== undefined) {
-              filterList = filterList + type + ' ' + filter.id;
-            } else if ((filter.mask !== undefined) &&
-                       (filter.code !== undefined)) {
-              // If filter is presented as a mask and code, perform simple
-              // conversion to the toID/fromID format expected by
-              // CAN-USB-COM. This is imperfect and will let many more
-              // messages through than intended. This is only meant to
-              // allow compatibility with CAN modules that require this
-              // style filter specification for very specific cases.
-              filterList = filterList + type + ' ' + filter.mask.toString(16) + ' ' + filter.code.toString(16);
-            }
-            // filterList.push( me._sendAndWait(
-            //   'SET CAN FILTER ' + type + ' ' + filter.id + ' ' + filter.mask  + CR,
-            //   '<A:EOL=(.*?)>' ));
-          });
-
-          return me._sendAndWait(
-            'SET CAN FILTER' + filterList + CR,
-            '<A:(.*?)>');
-        }
-
-      })
-
-      // Set up input and output format
-      .then(function() {
-        let filter = (me.options.filters.length > 0) ? 'ON' : 'OFF';
-
-        return me._sendAndWait(
-          'SET CAN CM FILTER=' + filter + ' EOL=NONE IFMT=ASCII OFMT=ASCII MODE=NORMAL' + CR,
-          '<A:EOL=(.*?)>');
-      })
-
-      // Go to command mode (operational mode)
-      .then(function() {
-        return me._sendAndWait(
-          'EXIT' + CR,
-          '<A>');
-      });
+    // Go to command mode (operational mode)
+    .then(function() {
+      return me._sendAndWait(
+        'EXIT' + CR,
+        '<A>');
+    });
 
   }
 
@@ -293,7 +304,7 @@ module.exports = class CanUsbCom extends Duplex {
     let me = this;
 
     me.requestQueue.forEach(function(request) {
-      me.resolveRequest(request.regex, new Error('Port Closed'));
+      me._resolveRequest(request.regex, new Error('Port Closed'));
     });
   }
 
@@ -306,8 +317,8 @@ module.exports = class CanUsbCom extends Duplex {
       return item.regex === regex;
     });
 
-    if (index > -1) {
-      if (this.requestQueue[index].timer) {
+    if(index > -1) {
+      if(this.requestQueue[index].timer) {
         clearTimeout(this.requestQueue[index].timer);
       }
 
@@ -348,7 +359,7 @@ module.exports = class CanUsbCom extends Duplex {
       }, timeout || DEFAULT_TIMEOUT);
 
       let cb = function(err, result) {
-        if (err) {
+        if(err) {
           reject(err);
         } else {
           resolve(result);
@@ -374,22 +385,22 @@ module.exports = class CanUsbCom extends Duplex {
     me._rxData = me._rxData + data.toString();
 
     // If we are waiting for a response from the device, see if this is it
-    if (this.requestQueue.length > 0) {
+    if(this.requestQueue.length > 0) {
 
       let cmd = me.requestQueue[0];
 
-      if (me._rxData.search(cmd.regex) > -1) {
+      if(me._rxData.search(cmd.regex) > -1) {
         // found what we are looking for
 
 
         // Cancel the no-response timeout because we have a response
-        if (cmd.timer !== null) {
+        if(cmd.timer !== null) {
           clearTimeout(cmd.timer);
           cmd.timer = null;
         }
 
         // Signal the caller with the response data
-        if (cmd.cb) {
+        if(cmd.cb) {
           cmd.cb(null, me._rxData);
         }
 
@@ -400,11 +411,11 @@ module.exports = class CanUsbCom extends Duplex {
         // command at a time...)
         me._rxData = '';
       }
-    } else if (me.isReady) {
+    } else if(me.isReady) {
 
       let packets = me._rxData.split(';');
 
-      if (packets.length > 0) {
+      if(packets.length > 0) {
 
 
         // save any extra data that's not a full packet for next time
@@ -414,7 +425,7 @@ module.exports = class CanUsbCom extends Duplex {
 
           let fields = packet.match(/:([SX])([0-9A-F]{1,8})N([0-9A-F]{0,16})/);
 
-          if (fields) {
+          if(fields) {
 
             let id = 0;
             let ext = false,
@@ -425,7 +436,7 @@ module.exports = class CanUsbCom extends Duplex {
               data = Buffer.from(fields[3], 'hex');
               id = parseInt(fields[2], 16);
 
-              if (fields[1] === 'X') {
+              if(fields[1] === 'X') {
                 ext = true;
               }
 
@@ -435,7 +446,7 @@ module.exports = class CanUsbCom extends Duplex {
               // console.log('onData error: ', fields, err);
             }
 
-            if (id > 0) {
+            if(id > 0) {
               // emit a standard (non-J1939) message
               me.push({
                 id: id,

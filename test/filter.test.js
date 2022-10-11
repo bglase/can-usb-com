@@ -56,7 +56,7 @@ describe('No Filters', () => {
 
     let result = await can.list();
 
-    let p = can.should.emit('open');
+    let p = can.should.emit('open', { timeout: 100 });
 
     can.open(result[0].path);
 

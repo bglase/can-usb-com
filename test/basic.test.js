@@ -9,11 +9,11 @@ const expect = chai.expect;
 const should = chai.should();
 chai.use(require('chai-events'));
 
+const MockBinding = require('./MockBinding');
+
+
 const { Duplex } = require('stream');
 
-const CAN_OPTIONS = {
-  canRate: 250000,
-};
 
 // Define a simple stream to send packet(s)
 class SendStream extends Duplex {
@@ -60,7 +60,10 @@ describe('List available devices', () => {
 
   it('should be at least one device', async () => {
 
-    let can = new CanUsbCom(CAN_OPTIONS);
+    let can = new CanUsbCom({
+      canRate: 250000,
+      Binding: MockBinding,
+    });
 
     let result = await can.list();
 
@@ -90,12 +93,20 @@ describe('Send a Message', () => {
   // before all tests in this block, get an open port
   before(async () => {
 
-    // set and keep for later tests
-    can = new CanUsbCom(CAN_OPTIONS);
+    can = new CanUsbCom({
+      canRate: 250000,
+      Binding: MockBinding,
+      bindingOptions: {
+
+        packetcb: function(port, packet) {
+          //console.log('packetcb', packet);
+        },
+      }
+    });
 
     let result = await can.list();
 
-    let p = can.should.emit('open');
+    let p = can.should.emit('open', { timeout: 100 });
 
     can.open(result[0].path);
 
@@ -104,7 +115,7 @@ describe('Send a Message', () => {
 
   it('should send a message with standard identifier', async () => {
 
-    let p = can.should.not.emit('error');
+    let p = can.should.not.emit('error', { timeout: 100 });
 
     // mainly we are checking that the write does not throw or error
 
@@ -149,13 +160,17 @@ describe('Send a Message', () => {
       buf: [1, 2, 3, 4, 5, 6, 7, 8]
     });
 
+    await can.drain();
+
+
+    expect(can.port.binding.txPackets.length).eq(8);
     return p;
 
   });
 
   it('should emit a write event', async () => {
 
-    let p = can.should.emit('write');
+    let p = can.should.emit('write', { timeout: 100 });
 
     can.write({
       id: 0x100,
@@ -169,9 +184,7 @@ describe('Send a Message', () => {
 
   // after all tests in this block
   after(async () => {
-
     await can.close();
-
   })
 });
 
@@ -184,11 +197,20 @@ describe('Receive a Message', () => {
   before(async () => {
 
     // set and keep for later tests
-    can = new CanUsbCom(CAN_OPTIONS);
+    can = new CanUsbCom({
+      canRate: 250000,
+      Binding: MockBinding,
+      bindingOptions: {
+        packetcb: function(port, packet) {
+
+        },
+      }
+
+    });
 
     let result = await can.list();
 
-    let p = can.should.emit('open');
+    let p = can.should.emit('open', { timeout: 100 });
 
     can.open(result[0].path);
 
@@ -260,11 +282,19 @@ describe('Loopback Mode', () => {
   before(async () => {
 
     // set and keep for later tests
-    can = new CanUsbCom(Object.assign(CAN_OPTIONS, { loopback: true }));
+    can = new CanUsbCom({
+      loopback: true,
+      canRate: 250000,
+      Binding: MockBinding,
+      bindingOptions: {
+
+      }
+
+    });
 
     let result = await can.list();
 
-    let p = can.should.emit('open');
+    let p = can.should.emit('open', { timeout: 100 });
 
     can.open(result[0].path);
 
@@ -319,14 +349,20 @@ describe('Implement a standard stream interface', () => {
   before(async () => {
 
     // set and keep for later tests
-    can = new CanUsbCom(CAN_OPTIONS);
+    can = new CanUsbCom({
+      canRate: 250000,
+      Binding: MockBinding,
+      bindingOptions: {
 
+      }
+
+    });
     can.pipe(receiver);
     sender.pipe(can);
 
     let result = await can.list();
 
-    let p = can.should.emit('open');
+    let p = can.should.emit('open', { timeout: 100 });
 
     can.open(result[0].path);
 
