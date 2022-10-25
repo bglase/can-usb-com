@@ -355,7 +355,7 @@ module.exports = class CanUsbCom extends Duplex {
     return new Promise(function(resolve, reject) {
 
       let timer = setTimeout(function() {
-        me.resolveRequest(msg, new Error('No Response to ' + msg));
+        me._resolveRequest(msg, new Error('No Response to ' + msg));
       }, timeout || DEFAULT_TIMEOUT);
 
       let cb = function(err, result) {
